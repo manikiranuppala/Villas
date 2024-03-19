@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.JsonPatch;
+using Microsoft.AspNetCore.Mvc;
+using System.Reflection.Metadata.Ecma335;
 using Villa_WebAPI.Data;
 using Villa_WebAPI.Models;
 
@@ -19,23 +21,23 @@ namespace Villa_WebAPI.Controllers
 
         //[HttpGet]// if we don't define then by default GET is httpVerb
         //here we have two Get Methods and one accept ID, so we need to define the id in HTTP VERB as below 
-        [HttpGet("Id",Name ="GetVilla")] // or we can give [HttpGet("{Id:int}",Name="GetVilla")] 
+        [HttpGet("Id", Name = "GetVilla")] // or we can give [HttpGet("{Id:int}",Name="GetVilla")] 
         //To document the API responses we use below Attributes
-        [ProducesResponseType(200,Type=typeof(VillaDTO))] //here we need to declare Type if not decalred at ActionResult
+        [ProducesResponseType(200, Type = typeof(VillaDTO))] //here we need to declare Type if not decalred at ActionResult
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]// we can also use Statuscodes class and respective status instead of direct number 400
         public ActionResult<VillaDTO> GetVilla(int Id) // If we don't define the type of ActionResult and keep just ACtionResult and if we need sample response in document then need to declare the return type in above produceResponseType
         {
             //We can return multiple status codes with below conditions
-            if(Id <=0)
+            if (Id <= 0)
             {
                 return BadRequest(); // This will return 400 status
             }
-            var VillaDetails= VillaStore.GetVillaList.FirstOrDefault(t => t.Id == Id);
-            if(VillaDetails==null) 
+            var VillaDetails = VillaStore.GetVillaList.FirstOrDefault(t => t.Id == Id);
+            if (VillaDetails == null)
             {
                 return NotFound(); // This will return 404 status
-            } 
+            }
             return Ok(VillaDetails); //this will return 200 OK staus
         }
 
@@ -44,24 +46,98 @@ namespace Villa_WebAPI.Controllers
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public ActionResult<VillaDTO> AddVilla([FromBody]VillaDTO villaDto) // we will use FromBody attribute to read it from Body
-         // bydefault, ASP.NET Web API binds complex types from the request message body and simple types from URI, query string, etc
-         //villa is complex type(class) and if i don't mention fromBody attribute it will bind automatically and work and if I pass in URI it will not work for complex datatype
-         // for simple data type like string  we need to mention [FromBody] attribute and if we pass it in URI no need to mention [FromUri] attribute in WEB API, In MVC we need to mention both
+        public ActionResult<VillaDTO> AddVilla([FromBody] VillaDTO villaDto) // we will use FromBody attribute to read it from Body
+                                                                             // bydefault, ASP.NET Web API binds complex types from the request message body and simple types from URI, query string, etc
+                                                                             //villa is complex type(class) and if i don't mention fromBody attribute it will bind automatically and work and if I pass in URI it will not work for complex datatype
+                                                                             // for simple data type like string  we need to mention [FromBody] attribute and if we pass it in URI no need to mention [FromUri] attribute in WEB API, In MVC we need to mention both
         {
-            if(villaDto == null) 
-            { 
-                return BadRequest();    
+            //Check data Annotation validation if we don't have [ApiController]
+            //if(!ModelState.IsValid)
+            //{
+            //    return NotFound(ModelState);
+            //}
+            //Custom Validation
+            if (VillaStore.GetVillaList.FirstOrDefault(t => t.Name.ToLower() == villaDto.Name.ToLower()) != null)
+            {
+                ModelState.AddModelError("Custom Error", "Villa Name shoud be unique");//key should be unique
+                return BadRequest(ModelState);
             }
-            if(villaDto.Id > 0) 
+
+            if (villaDto == null)
+            {
+                return BadRequest();
+            }
+            if (villaDto.Id > 0)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError);
             }
             villaDto.Id = VillaStore.GetVillaList.OrderByDescending(t => t.Id).FirstOrDefault().Id + 1;
             VillaStore.GetVillaList.Add(villaDto);
             // return Ok(villaDto ); // We can return the created villa or we can route this to get villa by ID
-            return CreatedAtRoute("GetVilla", new {id=villaDto.Id}, villaDto);
+            return CreatedAtRoute("GetVilla", new { id = villaDto.Id }, villaDto);
 
         }
+        [HttpDelete("Id", Name = "DeleteVilla")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public IActionResult DeleteVilla(int Id)
+        {
+            if (Id <= 0)
+            {
+                return BadRequest();
+            }
+            var villa = VillaStore.GetVillaList.FirstOrDefault(t => t.Id == Id);
+            if (villa == null)
+            {
+                return NotFound();
+            }
+            VillaStore.GetVillaList.Remove(villa);
+            return NoContent();
+        }
+
+        [HttpPut("{id:int}", Name = "UpadteVilla")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+
+        public IActionResult UpdateVilla(int id, [FromBody] VillaDTO villaDto)
+        {
+            if (villaDto == null || id != villaDto.Id)
+            {
+                return BadRequest();
+            }
+            var villa = VillaStore.GetVillaList.FirstOrDefault(t => t.Id == id);
+            if (villa == null)
+            {
+                return NotFound();
+            }
+            villa.Name = villaDto.Name;
+            villa.Occupency = villaDto.Occupency;
+            villa.Sqft = villaDto.Sqft;
+
+            return NoContent();
+        }
+
+        [HttpPatch("{id:int}",Name ="UpdatePartialVilla")]
+        public IActionResult UpdatePartialVilla(int id,JsonPatchDocument<VillaDTO> patchDto)
+        {
+            if(id <= 0 || patchDto==null)
+            {
+                return BadRequest();
+            }
+            var villa=VillaStore.GetVillaList.FirstOrDefault(t=>t.Id == id);
+            if (villa == null)
+            {
+                return NotFound();
+            }
+            patchDto.ApplyTo(villa, ModelState);
+            if(!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            return NoContent(); 
+        }
+
     }
 }
